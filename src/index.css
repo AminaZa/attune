@@ -1,0 +1,116 @@
+/* ===========================================================================
+   Self-hosted fonts (attune-design-system.md §2). woff2 in /public/fonts —
+   zero network dependency on pitch day. Instrument Sans = UI; Geist Mono = data.
+   =========================================================================== */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/GeistMono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/GeistMono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/GeistMono-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/GeistMono-700.woff2') format('woff2');
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background-color: #05070b; /* fallback under .bg-attune; never flat-black where the recipe shows */
+    color: #e8edf2;
+    font-family: 'Instrument Sans', Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Tabular, instrument-feel numbers wherever Geist Mono is used. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+}
+
+@layer components {
+  /* -------------------------------------------------------------------------
+     §1.1 Background recipe — copy exactly, EVERY screen uses this class.
+     Gradient base + two faint static color washes. Never flat black,
+     never animated. Cards sit on top with bg-surface so it breathes through.
+     ------------------------------------------------------------------------- */
+  .bg-attune {
+    background:
+      radial-gradient(900px 560px at 84% 11%, rgba(34, 211, 238, 0.07), transparent 70%),
+      radial-gradient(980px 640px at 12% 91%, rgba(59, 79, 160, 0.1), transparent 70%),
+      linear-gradient(135deg, #101a2b 0%, #0a111d 45%, #05070b 100%);
+    background-attachment: fixed;
+  }
+
+  /* Card recipe (§3): translucent surface, hairline border, 20px radius. */
+  .card-attune {
+    background: rgba(17, 21, 28, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 24px;
+  }
+
+  /* Section label (§2): 11–12px uppercase, wide tracking, dim. */
+  .label-attune {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #8a94a3;
+  }
+}
