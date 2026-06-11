@@ -18,12 +18,16 @@ export default {
         bgMid: colors.bgMid,
         bgTo: colors.bgTo,
         surface: colors.surface,
+        surfaceHighlight: colors.surfaceHighlight,
         raised: colors.raised,
         hairline: colors.hairline,
         hairline2: colors.hairline2,
         text: colors.text,
         textDim: colors.textDim,
+        textMute: colors.textMute,
         accent: colors.accent,
+        accentDeep: colors.accentDeep,
+        champagne: colors.champagne,
         calm: colors.calm,
         warm: colors.warm,
         alert: colors.alert,
@@ -46,12 +50,17 @@ export default {
         labelWide: '0.2em',
       },
       boxShadow: {
-        // §3 one depth trick only: hairline border + subtle inner gradient.
+        // §3 hairline inner border.
         hairline: `inset 0 0 0 1px ${colors.hairline}`,
+        // §7 glass card: top inner highlight (light from above) + one soft ambient-occlusion shadow.
+        glass: `inset 0 1px 0 ${colors.surfaceHighlight}, 0 18px 50px -28px rgba(0, 0, 0, 0.9)`,
+      },
+      backdropBlur: {
+        glass: '16px', // §7 card glass blur
       },
       backgroundImage: {
-        // §5 noise-cancel bar fill
-        'noise-fill': `linear-gradient(90deg, ${colors.noiseFillFrom}, ${colors.noiseFillTo})`,
+        // §5 noise-cancel bar fill: deep → cyan → bright tip
+        'noise-fill': `linear-gradient(90deg, ${colors.noiseFillFrom}, ${colors.noiseFillTo} 78%, ${colors.noiseFillHi})`,
       },
     },
   },
