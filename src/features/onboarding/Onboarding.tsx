@@ -19,6 +19,16 @@ type DraftProfile = {
   intervention?: Partial<SupportProfile['intervention']>;
 };
 type StarterKey = 'autism' | 'adhd' | 'audhd';
+type HapticTolerance = SupportProfile['sensory']['hapticTolerance'];
+
+const sensoryDefaults: SupportProfile['sensory'] = {
+  noiseCancelStrength: 0.5,
+  lightDimmingLevel: 0.5,
+  temperaturePreferenceC: 22,
+  hapticTolerance: 'medium',
+};
+
+const hapticOptions: HapticTolerance[] = ['low', 'medium', 'high'];
 
 const starterProfiles: Record<
   StarterKey,
@@ -96,6 +106,23 @@ export function OnboardingWizard() {
   const canGoBack = step > 1;
   const canGoNext = step < TOTAL_STEPS;
   const isFirstStep = step === 1;
+  const sensoryDraft = {
+    ...sensoryDefaults,
+    ...draft.sensory,
+  };
+
+  const updateSensory = <Key extends keyof SupportProfile['sensory']>(
+    key: Key,
+    value: SupportProfile['sensory'][Key],
+  ) => {
+    setDraft((currentDraft) => ({
+      ...currentDraft,
+      sensory: {
+        ...currentDraft.sensory,
+        [key]: value,
+      },
+    }));
+  };
 
   const applyStarter = (starter: StarterKey) => {
     setSelectedStarter(starter);
@@ -221,6 +248,117 @@ export function OnboardingWizard() {
               <div className="mx-auto mt-16 max-w-lg text-center text-xl leading-8 text-textDim">
                 <p>Your diagnosis only pre-fills settings.</p>
                 <p className="font-semibold text-text">It is never stored.</p>
+              </div>
+            </div>
+          ) : step === 2 ? (
+            <div>
+              <div className="mb-8">
+                <h2 className="mb-4 font-sans text-3xl font-semibold leading-tight text-text sm:text-4xl">
+                  Tune sensory comfort
+                </h2>
+                <p className="max-w-2xl text-xl leading-8 text-textDim">
+                  Set the cabin baseline for noise, light, temperature, and touch feedback.
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                <label className="block rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
+                  <span className="flex items-start justify-between gap-6">
+                    <span className="text-xl font-semibold leading-7 text-text">
+                      How much should the cabin quiet background noise?
+                    </span>
+                    <span className="shrink-0 font-mono text-2xl text-accent">
+                      {sensoryDraft.noiseCancelStrength.toFixed(2)}
+                    </span>
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={sensoryDraft.noiseCancelStrength}
+                    onChange={(event) =>
+                      updateSensory('noiseCancelStrength', Number(event.target.value))
+                    }
+                    className="mt-7 h-3 w-full accent-accent"
+                  />
+                </label>
+
+                <label className="block rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
+                  <span className="flex items-start justify-between gap-6">
+                    <span className="text-xl font-semibold leading-7 text-text">
+                      Light dimming level
+                    </span>
+                    <span className="shrink-0 font-mono text-2xl text-accent">
+                      {sensoryDraft.lightDimmingLevel.toFixed(2)}
+                    </span>
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={sensoryDraft.lightDimmingLevel}
+                    onChange={(event) =>
+                      updateSensory('lightDimmingLevel', Number(event.target.value))
+                    }
+                    className="mt-7 h-3 w-full accent-accent"
+                  />
+                </label>
+
+                <label className="block rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
+                  <span className="flex items-start justify-between gap-6">
+                    <span className="text-xl font-semibold leading-7 text-text">
+                      Preferred cabin temperature
+                    </span>
+                    <span className="shrink-0 font-mono text-2xl text-accent">
+                      {sensoryDraft.temperaturePreferenceC}°C
+                    </span>
+                  </span>
+                  <input
+                    type="range"
+                    min="18"
+                    max="26"
+                    step="1"
+                    value={sensoryDraft.temperaturePreferenceC}
+                    onChange={(event) =>
+                      updateSensory('temperaturePreferenceC', Number(event.target.value))
+                    }
+                    className="mt-7 h-3 w-full accent-accent"
+                  />
+                </label>
+
+                <div className="rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
+                  <div className="mb-5 flex items-start justify-between gap-6">
+                    <p className="text-xl font-semibold leading-7 text-text">
+                      Haptic feedback tolerance
+                    </p>
+                    <p className="shrink-0 font-mono text-2xl capitalize text-accent">
+                      {sensoryDraft.hapticTolerance}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {hapticOptions.map((option) => {
+                      const isSelected = sensoryDraft.hapticTolerance === option;
+
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => updateSensory('hapticTolerance', option)}
+                          className={`min-h-20 rounded-inner border px-5 text-xl font-semibold capitalize transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                            isSelected
+                              ? 'border-accent bg-accent text-onAccent shadow-[0_0_28px_rgba(52,222,242,0.32)]'
+                              : 'border-hairline2 bg-raised/30 text-textDim hover:border-accent/70 hover:text-text'
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
