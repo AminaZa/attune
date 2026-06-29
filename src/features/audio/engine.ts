@@ -20,11 +20,29 @@
 const DRONE_SRC = '/audio/cabin-drone.mp3';
 const SIREN_SRC = '/audio/siren.mp3';
 
+/** Short spoken cues, played at full gain (never ducked) on the driver's voice channel. */
+const VOICE_SRCS: Record<string, string> = {
+  stress: '/audio/voice-stress.mp3', // gentle_cue
+  stressFirm: '/audio/voice-stress-firm.mp3', // firm_cue (escalation)
+  attention: '/audio/voice-attention.mp3', // re-engagement
+  siren: '/audio/voice-siren.mp3', // emergency vehicle
+};
+
 /** Drone ducking + filter targets at full cancellation. */
-const DRONE_MIN_GAIN = 0.04; // ~4% — barely-there hush, but never a full mute (it's the cabin)
+const DRONE_MIN_GAIN = 0.02; // ~2% — barely-there hush, but never a full mute (it's the cabin)
 const LOWPASS_OPEN_HZ = 20000; // effectively bypassed
-const LOWPASS_CLOSED_HZ = 220; // deeply muffled, "underwater" cabin at max calming
+const LOWPASS_CLOSED_HZ = 150; // deeply muffled, "underwater" cabin at max calming
 const RAMP_TC = 0.35; // setTargetAtTime time-constant — smooth, never a click
+
+/**
+ * Duck-response curve. `noiseCancelLevel` (= the engine's `overload`) rarely
+ * reaches 1.0 in the demo — stress peaks ~0.55, siren ~0.76 — so a linear duck
+ * would barely move. We bend the response so it ducks HARD across the range the
+ * scenarios actually hit (near-full by ~0.65), making the suppression clearly
+ * audible, while calm (~0.1) leaves the drone mostly present for contrast.
+ */
+const DUCK_KNEE = 0.65; // level at which the duck is effectively maxed
+const DUCK_EXP = 0.7; // <1 → ducks early/aggressively within the knee
 
 /** Siren detection band + thresholds (the honest "we detect it" check). */
 const BAND_LO_HZ = 600;
@@ -52,12 +70,15 @@ export class CabinAudioEngine {
   private lowpass: BiquadFilterNode;
   private droneGain: GainNode;
   private sirenGain: GainNode;
+  private voiceGain: GainNode;
   private analyser: AnalyserNode;
 
   private droneBuffer: AudioBuffer | null = null;
   private sirenBuffer: AudioBuffer | null = null;
   private droneSource: AudioBufferSourceNode | null = null;
   private sirenSource: AudioBufferSourceNode | null = null;
+  private voiceBuffers: Record<string, AudioBuffer> = {};
+  private voiceSource: AudioBufferSourceNode | null = null;
 
   private freqData: Float32Array<ArrayBuffer>;
   private peakHistory: number[] = [];
@@ -78,12 +99,14 @@ export class CabinAudioEngine {
     this.lowpass = this.ctx.createBiquadFilter();
     this.droneGain = this.ctx.createGain();
     this.sirenGain = this.ctx.createGain();
+    this.voiceGain = this.ctx.createGain();
     this.analyser = this.ctx.createAnalyser();
 
     this.lowpass.type = 'lowpass';
     this.lowpass.frequency.value = LOWPASS_OPEN_HZ;
     this.droneGain.gain.value = 1;
     this.sirenGain.gain.value = 1;
+    this.voiceGain.gain.value = 1;
     this.master.gain.value = 1;
     this.analyser.fftSize = 2048;
     this.analyser.smoothingTimeConstant = 0.6;
@@ -94,6 +117,8 @@ export class CabinAudioEngine {
     // Siren chain: source → sirenGain → master, with a read-only analyser tap.
     this.sirenGain.connect(this.master);
     this.sirenGain.connect(this.analyser);
+    // Voice chain: one-shot cues → voiceGain → master (full gain, never ducked).
+    this.voiceGain.connect(this.master);
     this.master.connect(this.ctx.destination);
 
     this.freqData = new Float32Array(this.analyser.frequencyBinCount);
@@ -115,6 +140,18 @@ export class CabinAudioEngine {
         this.loadBuffer(SIREN_SRC),
       ]);
     }
+    // Voice clips are an enhancement — load best-effort so a missing/undecodable
+    // clip never blocks the core "duck the drone, keep the siren" showpiece.
+    await Promise.all(
+      Object.entries(VOICE_SRCS).map(async ([key, url]) => {
+        if (this.voiceBuffers[key]) return;
+        try {
+          this.voiceBuffers[key] = await this.loadBuffer(url);
+        } catch {
+          /* clip missing — that cue just stays silent */
+        }
+      })
+    );
     this.startDrone();
     this.applyDroneTargets();
   }
@@ -153,14 +190,48 @@ export class CabinAudioEngine {
     this.master.gain.setTargetAtTime(muted ? 0 : 1, this.ctx.currentTime, 0.05);
   }
 
+  /** The bent duck-response: 0 (no cancelling) → 1 (full duck), maxed by the knee. */
+  private duckAmount(): number {
+    return clamp01(Math.pow(clamp01(this.noiseCancelLevel / DUCK_KNEE), DUCK_EXP));
+  }
+
   /** Recompute drone gain + low-pass cutoff from level (or bypass them in raw mode). */
   private applyDroneTargets(): void {
-    const gain = this.mode === 'raw' ? 1 : lerp(1, DRONE_MIN_GAIN, this.noiseCancelLevel);
-    const cutoff = this.mode === 'raw' ? LOWPASS_OPEN_HZ : lerp(LOWPASS_OPEN_HZ, LOWPASS_CLOSED_HZ, this.noiseCancelLevel);
+    const amt = this.duckAmount();
+    const gain = this.mode === 'raw' ? 1 : lerp(1, DRONE_MIN_GAIN, amt);
+    const cutoff = this.mode === 'raw' ? LOWPASS_OPEN_HZ : lerp(LOWPASS_OPEN_HZ, LOWPASS_CLOSED_HZ, amt);
     const now = this.ctx.currentTime;
     this.droneGain.gain.setTargetAtTime(gain, now, RAMP_TC);
     // Filter sweeps exponentially — set as a target on a positive value.
     this.lowpass.frequency.setTargetAtTime(cutoff, now, RAMP_TC);
+  }
+
+  /**
+   * Play a short spoken cue once (stress / stressFirm / attention / siren). Routed
+   * at full gain, never ducked. A new cue cancels any still-playing one so lines
+   * never overlap. No-op if the clip wasn't loaded.
+   */
+  playVoice(key: string): void {
+    const buffer = this.voiceBuffers[key];
+    if (!buffer) return;
+    if (this.voiceSource) {
+      try {
+        this.voiceSource.stop();
+      } catch {
+        /* already finished */
+      }
+      this.voiceSource.disconnect();
+      this.voiceSource = null;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(this.voiceGain);
+    src.onended = () => {
+      src.disconnect();
+      if (this.voiceSource === src) this.voiceSource = null;
+    };
+    src.start();
+    this.voiceSource = src;
   }
 
   /** Start the siren loop at full gain, unaffected by cancellation. */
@@ -224,7 +295,7 @@ export class CabinAudioEngine {
 
   status(): AudioStatus {
     return {
-      droneGain: this.mode === 'raw' ? 1 : lerp(1, DRONE_MIN_GAIN, this.noiseCancelLevel),
+      droneGain: this.mode === 'raw' ? 1 : lerp(1, DRONE_MIN_GAIN, this.duckAmount()),
       lowpassHz: this.lowpass.frequency.value,
       sirenPlaying: this.sirenPlaying,
       sirenDetected: this.sirenDetected,
@@ -237,6 +308,15 @@ export class CabinAudioEngine {
   /** Tear down the whole graph (HMR / unmount). */
   dispose(): void {
     this.stopSiren();
+    if (this.voiceSource) {
+      try {
+        this.voiceSource.stop();
+      } catch {
+        /* already finished */
+      }
+      this.voiceSource.disconnect();
+      this.voiceSource = null;
+    }
     if (this.droneSource) {
       try {
         this.droneSource.stop();

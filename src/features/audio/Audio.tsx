@@ -26,6 +26,9 @@ const SHOW_CONTROL =
 export default function Audio() {
   const engineRef = useRef<CabinAudioEngine | null>(null);
   const sirenOnRef = useRef(false);
+  // Rising-edge trackers so each spoken cue fires once per episode, never per frame.
+  const alertRankRef = useRef(0); // 0 none · 1 gentle_cue · 2 firm_cue (escalation only)
+  const cueOnRef = useRef(false);
 
   const [enabled, setEnabled] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -41,6 +44,12 @@ export default function Audio() {
     (s) => s.decisions?.preservedSounds.some((e) => e.type === 'siren') ?? false
   );
   const pushEvent = useStore((s) => s.pushEvent);
+  // Voice cues fire only when the driver's resolved channel is 'voice' (profile, not label).
+  const voiceChannel = useStore(
+    (s) => s.profile?.intervention.preferredAlertChannel === 'voice'
+  );
+  const alertStage = useStore((s) => s.decisions?.alert?.stage ?? null);
+  const engagementCue = useStore((s) => s.decisions?.engagementCue ?? false);
 
   // --- bind store decisions → engine ---------------------------------------
   useEffect(() => {
@@ -63,11 +72,41 @@ export default function Audio() {
       sirenOnRef.current = true;
       engine.startSiren();
       pushEvent(buildSirenAlert());
+      if (voiceChannel) engine.playVoice('siren');
     } else if (!hasSiren && sirenOnRef.current) {
       sirenOnRef.current = false;
       engine.stopSiren();
     }
-  }, [hasSiren, enabled, pushEvent]);
+  }, [hasSiren, enabled, pushEvent, voiceChannel]);
+
+  // Stress alert voice: speak once on the gentle cue, again only if it ESCALATES
+  // to firm (rank rises). Resets when the alert clears, so jitter can't replay it.
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!enabled || !engine) return;
+    const rank = alertStage === 'firm_cue' ? 2 : alertStage ? 1 : 0;
+    if (rank === 0) {
+      alertRankRef.current = 0;
+      return;
+    }
+    // A siren owns the voice channel during its episode — don't talk over it.
+    if (voiceChannel && !hasSiren && rank > alertRankRef.current) {
+      engine.playVoice(rank === 2 ? 'stressFirm' : 'stress');
+    }
+    alertRankRef.current = rank; // still track rank so it can't replay later
+  }, [alertStage, enabled, voiceChannel, hasSiren]);
+
+  // Re-engagement voice: speak once when attention dips enough to raise the cue.
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!enabled || !engine) return;
+    if (engagementCue && !cueOnRef.current) {
+      cueOnRef.current = true;
+      if (voiceChannel) engine.playVoice('attention');
+    } else if (!engagementCue) {
+      cueOnRef.current = false;
+    }
+  }, [engagementCue, enabled, voiceChannel]);
 
   // Live analysis + status polling (~15fps) while audio is on.
   useEffect(() => {
