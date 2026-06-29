@@ -4,7 +4,18 @@ import { Onboarding } from '@/features/onboarding';
 import { Dashboard } from '@/features/dashboard';
 import { Cabin } from '@/features/cabin';
 import { Audio } from '@/features/audio';
+import { ScenarioPanel } from '@/data';
 import { startStubEngine } from '@/engine/stub';
+
+/**
+ * The demo remote (ScenarioPanel) is gated behind the `?control` query param so
+ * it shows only on the laptop's control tab and never on the projector's `/cabin`
+ * tab. Read once at module load — the presenter opens the control tab with the
+ * flag and the projector tab without it.
+ */
+const SHOW_CONTROL =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).has('control');
 
 /**
  * App shell + routing (lead). Routes:
@@ -26,6 +37,8 @@ export default function App() {
     <BrowserRouter>
       {/* Mounted app-wide: the audio showpiece reacts to store decisions. */}
       <Audio />
+      {/* Lead's demo remote — only when the URL carries ?control. */}
+      {SHOW_CONTROL && <ScenarioPanel />}
       <Routes>
         <Route path="/" element={<Onboarding />} />
         <Route path="/dashboard" element={<Dashboard />} />
