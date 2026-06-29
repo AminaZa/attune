@@ -1,0 +1,24 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+
+# Editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+Thumbs.db
+
+# Internal team docs & design assets — shared privately with the team, kept OUT of the public repo.
+# (The CLAUDE.md / AGENTS.md / .github/copilot-instructions.md context files are NOT matched here and stay public.)
+Vibathon26AIDVStudentGuide.pdf
+attune-*.md
+attune-mock-*.png
+mockups-v2/
+design tools.md
+implement.md
+keywords.md
+personal-todo.md
+github guide.md

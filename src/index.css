@@ -1,0 +1,127 @@
+/* ===========================================================================
+   Self-hosted fonts (attune-design-system.md §2). woff2 in /public/fonts —
+   zero network dependency on pitch day. Instrument Sans = UI; Geist Mono = data.
+   =========================================================================== */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/InstrumentSans-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/GeistMono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/GeistMono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/GeistMono-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/GeistMono-700.woff2') format('woff2');
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background-color: #04060b; /* fallback under .bg-attune; never flat-black where the recipe shows */
+    color: #eaf0f6;
+    font-family: 'Instrument Sans', Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Tabular, instrument-feel numbers wherever Geist Mono is used. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+}
+
+@layer components {
+  /* -------------------------------------------------------------------------
+     §1.1 Background recipe — copy exactly, EVERY screen uses this class.
+     Base gradient + three faint static color washes (teal upper-R, indigo
+     lower-L, deep teal rising) + a soft edge vignette layered on top. Never
+     flat black, never animated. Cards sit on top with bg-surface so the
+     gradient breathes through. (Mirrors tokens.backgroundRecipe + vignette.)
+     ------------------------------------------------------------------------- */
+  .bg-attune {
+    background:
+      radial-gradient(135% 120% at 50% 42%, transparent 56%, rgba(0, 0, 0, 0.5) 100%),
+      radial-gradient(1200px 760px at 86% 6%, rgba(34, 180, 200, 0.16), transparent 64%),
+      radial-gradient(1300px 900px at 8% 96%, rgba(56, 72, 150, 0.2), transparent 66%),
+      radial-gradient(900px 520px at 50% 120%, rgba(15, 90, 110, 0.1), transparent 70%),
+      linear-gradient(150deg, #0b1422 0%, #070c15 46%, #04060b 100%);
+    background-attachment: fixed;
+  }
+
+  /* Glass card recipe (§7): translucent surface + backdrop blur, hairline
+     border, 20px radius, a 1px top inner highlight, and one soft AO shadow.
+     This single recipe is what makes the UI feel milled and expensive. */
+  .card-attune {
+    position: relative;
+    background: rgba(18, 24, 34, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 18px 50px -28px rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(16px);
+  }
+
+  /* Section label (§2): 11–12px uppercase, wide tracking, dim. */
+  .label-attune {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #7e8a9b;
+  }
+}
