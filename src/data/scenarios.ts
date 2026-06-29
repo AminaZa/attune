@@ -74,13 +74,13 @@ const secToFrames = (sec: number) => Math.round(sec * FPS);
 // ---- the four scenarios ----------------------------------------------------
 
 /**
- * calm_drive (40s) — the baseline. Everything sits near rest and breathes: HR
+ * calm_drive (20s) — the baseline. Everything sits near rest and breathes: HR
  * ~72, relaxed grip, eyes on the road with healthy scanning. Nothing to act on;
  * this is what "attuned" looks like, and the contrast that makes the others read.
  */
 function buildCalmDrive(): TelemetryFrame[] {
   const frames: TelemetryFrame[] = [];
-  const total = secToFrames(40);
+  const total = secToFrames(20);
   for (let i = 0; i < total; i++) {
     const sec = i / FPS;
     frames.push({
@@ -102,21 +102,22 @@ function buildCalmDrive(): TelemetryFrame[] {
 }
 
 /**
- * stress_spike (45s) — the autism half. Calm for ~5s, then HR ramps 70→115 and
- * grip 0.2→0.8 over ~10s with rising micro-tremor and more agitated (but still
+ * stress_spike (18s) — the autism half. Calm for ~1s, then HR ramps 70→125 and
+ * grip 0.2→0.92 over ~5s with rising micro-tremor and more agitated (but still
  * on-road) scanning, then HOLDS high to the end. The driver-state stress gauge
- * climbs → the cabin should cancel more noise, soften light, and alert on the
- * profile's channel. Eyes stay on the road — this is overload, not inattention.
+ * climbs past the gentle threshold and on past the firm one (~0.92) → the cabin
+ * cancels more noise, softens light, and ESCALATES the alert gentle_cue→firm_cue
+ * on the profile's channel. Eyes stay on the road — this is overload, not inattention.
  */
 function buildStressSpike(): TelemetryFrame[] {
   const frames: TelemetryFrame[] = [];
-  const total = secToFrames(45);
+  const total = secToFrames(18);
   for (let i = 0; i < total; i++) {
     const sec = i / FPS;
-    const heartRate = ramp(sec, 5, 15, 70, 115);
-    const gripPressure = ramp(sec, 5, 15, 0.2, 0.8);
-    const tremor = ramp(sec, 5, 15, 0.05, 0.42);
-    const scanEntropy = ramp(sec, 5, 15, 0.5, 0.72); // hypervigilant, darting
+    const heartRate = ramp(sec, 1, 6, 70, 125);
+    const gripPressure = ramp(sec, 1, 6, 0.2, 0.92);
+    const tremor = ramp(sec, 1, 6, 0.05, 0.5);
+    const scanEntropy = ramp(sec, 1, 6, 0.5, 0.72); // hypervigilant, darting
     frames.push({
       t: i * FRAME_MS,
       gaze: {
@@ -136,7 +137,7 @@ function buildStressSpike(): TelemetryFrame[] {
 }
 
 /**
- * attention_drop (40s) — the ADHD half. Normal for ~12s, then for ~8s the gaze
+ * attention_drop (16s) — the ADHD half. Normal for ~2s, then for ~6s the gaze
  * leaves the road: `onRoad` false, fixation stretches toward a glazed ~2.2s
  * stare, scan entropy collapses (no road-scanning), and HR/grip drift *down*
  * with understimulation. Attention gauge falls → the engagement cue should fire.
@@ -144,10 +145,10 @@ function buildStressSpike(): TelemetryFrame[] {
  */
 function buildAttentionDrop(): TelemetryFrame[] {
   const frames: TelemetryFrame[] = [];
-  const total = secToFrames(40);
+  const total = secToFrames(16);
   for (let i = 0; i < total; i++) {
     const sec = i / FPS;
-    const d = bump(sec, 12, 20, 1.2); // 0..1 "zoned out" factor across the ~8s window
+    const d = bump(sec, 2, 8, 1.2); // 0..1 "zoned out" factor across the ~6s window
     frames.push({
       t: i * FRAME_MS,
       gaze: {
@@ -170,17 +171,17 @@ function buildAttentionDrop(): TelemetryFrame[] {
 const SIREN: AudioEvent = { type: 'siren', direction: 'right', intensity: 0.9 };
 
 /**
- * siren_event (40s) — the 5-second aha. Stress runs elevated throughout (HR ~96,
- * firm grip), so the cabin is already calming hard. Then from ~18–24s a siren
+ * siren_event (16s) — the 5-second aha. Stress runs elevated throughout (HR ~96,
+ * firm grip), so the cabin is already calming hard. Then from ~4–10s a siren
  * punches in from the right (intensity 0.9) and stress kicks higher with it. The
  * payoff: at maximum cabin calming the drone stays ducked but the siren is
  * PRESERVED and cued — "quiet the cabin, keep the siren" (brief §5, audio §3).
  */
 function buildSirenEvent(): TelemetryFrame[] {
   const frames: TelemetryFrame[] = [];
-  const total = secToFrames(40);
-  const sirenStart = 18;
-  const sirenEnd = 24;
+  const total = secToFrames(16);
+  const sirenStart = 4;
+  const sirenEnd = 10;
   for (let i = 0; i < total; i++) {
     const sec = i / FPS;
     const s = bump(sec, sirenStart, sirenEnd, 0.8); // stress kick around the siren

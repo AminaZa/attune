@@ -33,7 +33,12 @@ const SHOW_CONTROL =
 export default function App() {
   useEffect(() => {
     if (!getStore().profile) {
-      getStore().setProfile(DUMMY_PROFILE);
+      // Demo fallback profile uses the VOICE channel so the spoken cues
+      // (stress / re-engagement / siren) fire when running without onboarding.
+      getStore().setProfile({
+        ...DUMMY_PROFILE,
+        intervention: { ...DUMMY_PROFILE.intervention, preferredAlertChannel: 'voice' },
+      });
     }
     const stop = startEngine();
     return stop;
