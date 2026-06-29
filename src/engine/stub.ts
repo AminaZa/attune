@@ -1,18 +1,21 @@
 import { getStore } from '@/store';
-import type { CabinDecisions, DriverState, SupportProfile } from '@/types';
+import { FPS, SCENARIO_FRAMES } from '@/data/scenarios';
+import type { CabinDecisions, DriverState, SupportProfile, TelemetryFrame } from '@/types';
 
 /**
  * REFERENCE STUB ENGINE (`src/engine/stub.ts`).
  *
- * This is the lead's Day-1 stand-in so the whole app runs end-to-end TODAY,
- * before the real `fuse()` / `decide()` / loop (owned by team 02) exist. It
- * emits plausible fake DriverState + CabinDecisions on a smooth sine-wave loop,
- * driving the store ~10x/sec exactly like the real engine will.
+ * The lead's Day-1 stand-in so the whole app runs end-to-end TODAY, before team
+ * 02's real `fuse()` / `decide()` / loop exist. It now PLAYS the scripted data
+ * feed (`src/data/scenarios.ts`): each tick it reads the current frame of the
+ * active scenario, fuses it into a DriverState, decides cabin actions, and ticks
+ * the store ~10x/sec. Switching scenarios from the control panel visibly changes
+ * the numbers, because the scenarios are genuinely different telemetry.
  *
- * The real engine replaces this entirely — it must keep calling
- * `getStore().tick(state, decisions)` the same way. Everything downstream
- * (dashboard, cabin, notifications) reads the store and never knows the
- * difference. If team 02 stalls, this keeps the demo alive (build plan §4).
+ * The real engine replaces this entirely — it must keep reading
+ * `SCENARIO_FRAMES[activeScenario]` and calling `getStore().tick(state,
+ * decisions)` the same way. Everything downstream (dashboard, cabin, audio,
+ * notifications) reads the store and never knows the difference.
  */
 
 /** Hardcoded dummy Support Profile (brief §4.3 example, v7), so the app has a profile out of the box. */
@@ -38,51 +41,71 @@ export const DUMMY_PROFILE: SupportProfile = {
   },
 };
 
-const TICK_MS = 100; // ~10x/sec, matching the real engine cadence
+const TICK_MS = 1000 / FPS; // ~10x/sec, matching the feed cadence
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 /**
- * Fake fused state on smooth, out-of-phase sine waves so the gauges look alive
- * and "breathe" between triggers (design system §4). `tSec` is seconds elapsed.
- * Calm baseline: low stress/overload, high attention — gently oscillating.
+ * Fuse one telemetry frame into a driver-state estimate (stress, overload,
+ * attention; all 0..1). A deliberately simple rule-based stand-in for team 02's
+ * real `fuse()` — but driven by the REAL feed, so each scenario reads distinctly:
+ *   · stress     rises with heart rate, grip, tremor (stress_spike).
+ *   · overload   rises with stress, chaotic scanning, and loud audio (siren_event).
+ *   · attention  falls when gaze leaves the road and fixation glazes (attention_drop).
  */
-function fakeDriverState(tSec: number): DriverState {
-  // 2*pi*t = one full sine per second; we slow each axis to a calm multi-second breathe.
-  const stress = clamp01(0.28 + 0.18 * Math.sin((2 * Math.PI * tSec) / 7));
-  const overload = clamp01(0.22 + 0.15 * Math.sin((2 * Math.PI * tSec) / 9 + 1.1));
-  const attention = clamp01(0.78 + 0.14 * Math.sin((2 * Math.PI * tSec) / 5 + 2.3));
+function fuseFrame(f: TelemetryFrame): DriverState {
+  const hrNorm = clamp01((f.biometrics.heartRate - 60) / 60); // 60bpm→0, 120→1
+  const stress = clamp01(0.5 * hrNorm + 0.35 * f.biometrics.gripPressure + 0.15 * f.biometrics.tremor);
+
+  const audioIntensity = f.audioEvents.reduce((m, e) => Math.max(m, e.intensity), 0);
+  const scanExcess = clamp01((f.gaze.scanEntropy - 0.5) / 0.4); // hypervigilant darting
+  const overload = clamp01(0.45 * stress + 0.3 * scanExcess + 0.45 * audioIntensity);
+
+  const base = f.gaze.onRoad ? 0.85 : 0.2;
+  const fixationPenalty = clamp01((f.gaze.fixationMs - 500) / 2000) * 0.6; // glazed stare
+  const attention = clamp01(base - fixationPenalty);
+
   return { stress, overload, attention };
 }
 
 /**
- * Plausible decisions derived from the fake state + the dummy profile, so the
- * "act" side visibly tracks the "sense" side (the real-time-agent story).
+ * Decide cabin actions from the fused state + the profile — the "act" side that
+ * visibly tracks "sense". Safety-critical sounds in the frame are passed straight
+ * into `preservedSounds` (the audio showpiece plays them at full gain regardless
+ * of how hard the cabin is calming — "quiet the cabin, keep the siren").
  */
-function fakeDecisions(state: DriverState, profile: SupportProfile): CabinDecisions {
-  const noiseCancelLevel = clamp01(profile.sensory.noiseCancelStrength * (0.4 + state.stress));
-  const lightDimLevel = clamp01(profile.sensory.lightDimmingLevel * (0.5 + state.overload));
+function decideFrame(state: DriverState, profile: SupportProfile, f: TelemetryFrame): CabinDecisions {
+  const load = Math.max(state.stress, state.overload);
+  const noiseCancelLevel = clamp01(profile.sensory.noiseCancelStrength * (0.25 + 0.9 * load));
+  const lightDimLevel = clamp01(profile.sensory.lightDimmingLevel * (0.4 + state.overload));
+
   const engagementCue =
-    profile.attention.engagementCuesEnabled && state.attention < 0.45;
+    profile.attention.engagementCuesEnabled &&
+    profile.attention.zoneOutRisk === 'high' &&
+    state.attention < 0.4;
 
   const alert =
     state.stress > profile.intervention.stressThreshold
-      ? { stage: profile.intervention.escalationSteps[0] ?? 'gentle_cue', channel: profile.intervention.preferredAlertChannel }
+      ? {
+          stage: profile.intervention.escalationSteps[0] ?? 'gentle_cue',
+          channel: profile.intervention.preferredAlertChannel,
+        }
       : undefined;
 
-  return {
-    noiseCancelLevel,
-    lightDimLevel,
-    engagementCue,
-    alert,
-    preservedSounds: [], // the audio showpiece / siren scenario fills this later
-  };
+  // Everything in our AudioEvent union is safety-critical, so all of it is preserved.
+  const preservedSounds = f.audioEvents.filter(
+    (e) => e.type === 'siren' || e.type === 'horn' || e.type === 'tyre_screech'
+  );
+
+  return { noiseCancelLevel, lightDimLevel, engagementCue, alert, preservedSounds };
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Start the stub loop. Seeds the dummy profile if none is set, then ticks the
- * store ~10x/sec on a smooth sine loop. Returns a stop function.
+ * Start the stub loop. Seeds the dummy profile if none is set, then plays the
+ * active scenario's frames into the store ~10x/sec, looping. Selecting a new
+ * scenario (control panel → `setScenario`) restarts its timeline from frame 0.
+ * Returns a stop function.
  */
 export function startStubEngine(): () => void {
   if (timer) return stopStubEngine; // idempotent
@@ -91,12 +114,23 @@ export function startStubEngine(): () => void {
     getStore().setProfile(DUMMY_PROFILE);
   }
 
-  const start = performance.now();
+  let lastScenario = getStore().activeScenario;
+  let index = 0;
+
   timer = setInterval(() => {
-    const tSec = (performance.now() - start) / 1000;
+    const scenario = getStore().activeScenario;
+    if (scenario !== lastScenario) {
+      lastScenario = scenario;
+      index = 0; // new scenario → rewind to the start of its arc
+    }
+
+    const frames = SCENARIO_FRAMES[scenario];
+    const frame = frames[index % frames.length];
+    index++;
+
     const profile = getStore().profile ?? DUMMY_PROFILE;
-    const state = fakeDriverState(tSec);
-    const decisions = fakeDecisions(state, profile);
+    const state = fuseFrame(frame);
+    const decisions = decideFrame(state, profile, frame);
     getStore().tick(state, decisions);
   }, TICK_MS);
 
