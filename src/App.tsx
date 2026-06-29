@@ -5,7 +5,9 @@ import { Dashboard } from '@/features/dashboard';
 import { Cabin } from '@/features/cabin';
 import { Audio } from '@/features/audio';
 import { ScenarioPanel } from '@/data';
-import { startStubEngine } from '@/engine/stub';
+import { startEngine } from '@/engine/startEngine';
+import { DUMMY_PROFILE } from '@/engine/stub';
+import { getStore } from '@/store';
 
 /**
  * The demo remote (ScenarioPanel) is gated behind the `?control` query param so
@@ -23,13 +25,17 @@ const SHOW_CONTROL =
  *   /dashboard → Dashboard (live SENSE | ACT)
  *   /cabin     → Cabin (FPV ambient-light view, for the projector)
  *
- * Boots the reference stub engine so the app runs end-to-end today. When team
- * 02's real engine + the lead's scenario feed land, swap the bootstrap here —
- * everything downstream just reads the store.
+ * Boots team 02's real engine (fuse → decide → loop), which plays the lead's
+ * scenario feed into the store. We seed the dummy Support Profile if onboarding
+ * hasn't run, so opening straight to /dashboard still renders (the real engine
+ * skips ticking until a profile exists). Everything downstream just reads the store.
  */
 export default function App() {
   useEffect(() => {
-    const stop = startStubEngine();
+    if (!getStore().profile) {
+      getStore().setProfile(DUMMY_PROFILE);
+    }
+    const stop = startEngine();
     return stop;
   }, []);
 
