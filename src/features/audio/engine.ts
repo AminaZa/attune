@@ -21,9 +21,9 @@ const DRONE_SRC = '/audio/cabin-drone.mp3';
 const SIREN_SRC = '/audio/siren.mp3';
 
 /** Drone ducking + filter targets at full cancellation. */
-const DRONE_MIN_GAIN = 0.1; // ~10% — never fully silent (it's the cabin, not a mute)
+const DRONE_MIN_GAIN = 0.04; // ~4% — barely-there hush, but never a full mute (it's the cabin)
 const LOWPASS_OPEN_HZ = 20000; // effectively bypassed
-const LOWPASS_CLOSED_HZ = 350; // muffled, "underwater" cabin at max calming
+const LOWPASS_CLOSED_HZ = 220; // deeply muffled, "underwater" cabin at max calming
 const RAMP_TC = 0.35; // setTargetAtTime time-constant — smooth, never a click
 
 /** Siren detection band + thresholds (the honest "we detect it" check). */
