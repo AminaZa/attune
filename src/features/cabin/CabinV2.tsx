@@ -11,8 +11,8 @@ import { Notifications } from '@/features/notifications';
 // so /dashboard and /cabin react identically to the same scenario trigger.
 //
 // Layers (bottom → top):
-//   1  Cabin photo background  (src/features/cabin/assets/cabin.jpg)
-//      └ graceful gradient placeholder if the photo is absent
+//   1  Cabin photo background  (public/cabin.jpg — drop & refresh, no restart)
+//      └ graceful gradient placeholder if the file is absent or fails to load
 //   2  Vignette               (keeps glow contrast against the photo)
 //   3  Dash-line glow         (wide horizontal, colour-animated)
 //   4  Left door glow         (tall vertical, left edge)
@@ -28,12 +28,11 @@ import { Notifications } from '@/features/notifications';
 //   overall glow opacity : 0.30 → 0.14  (cabin dims)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Optional cabin photo ──────────────────────────────────────────────────────
-// Drop cabin.jpg into src/features/cabin/assets/ and restart the dev server.
-// Vite's glob importer resolves it at build time; if absent the map is empty.
-const _mods = import.meta.glob('./assets/cabin.jpg', { eager: true });
-const CABIN_PHOTO: string | null =
-  (_mods['./assets/cabin.jpg'] as { default: string } | undefined)?.default ?? null;
+// ── Cabin photo ───────────────────────────────────────────────────────────────
+// Drop cabin.jpg into /public/ (project root) — no build step, no restart.
+// Refresh the browser and it loads immediately. If the file is absent the img
+// onError handler flips photoError → true and the gradient placeholder renders.
+const CABIN_SRC = '/cabin.jpg';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Placeholder — rendered when no cabin.jpg is found.
@@ -170,6 +169,9 @@ export default function CabinV2() {
   const engCue    = decisions?.engagementCue    ?? false;
   const sounds    = decisions?.preservedSounds  ?? [];
 
+  // Track whether the cabin photo failed to load so we can show the placeholder.
+  const [photoError, setPhotoError] = useState(false);
+
   // ── Spring — drives colour + opacity transitions (~800 ms settle) ─────────
   const dimSpring = useSpring(dimLevel, { stiffness: 35, damping: 16 });
   useEffect(() => { dimSpring.set(dimLevel); }, [dimSpring, dimLevel]);
@@ -215,12 +217,13 @@ export default function CabinV2() {
       style={{ background: '#04050A' }}
     >
       {/* ── 1. Background ───────────────────────────────────────────────── */}
-      {CABIN_PHOTO ? (
+      {!photoError ? (
         <img
-          src={CABIN_PHOTO}
+          src={CABIN_SRC}
           alt=""
           className="absolute inset-0 h-full w-full object-cover object-center"
           draggable={false}
+          onError={() => setPhotoError(true)}
         />
       ) : (
         <CabinPlaceholder />
