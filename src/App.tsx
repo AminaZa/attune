@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Onboarding } from '@/features/onboarding';
 import { Dashboard } from '@/features/dashboard';
 import { Cabin } from '@/features/cabin';
@@ -8,16 +8,6 @@ import { ScenarioPanel } from '@/data';
 import { startEngine } from '@/engine/startEngine';
 import { DUMMY_PROFILE } from '@/engine/stub';
 import { getStore } from '@/store';
-
-/**
- * The demo remote (ScenarioPanel) is gated behind the `?control` query param so
- * it shows only on the laptop's control tab and never on the projector's `/cabin`
- * tab. Read once at module load — the presenter opens the control tab with the
- * flag and the projector tab without it.
- */
-const SHOW_CONTROL =
-  typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).has('control');
 
 /**
  * App shell + routing (lead). Routes:
@@ -46,10 +36,9 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      {/* Mounted app-wide: the audio showpiece reacts to store decisions. */}
-      <Audio />
-      {/* Lead's demo remote — only when the URL carries ?control. */}
-      {SHOW_CONTROL && <ScenarioPanel />}
+      {/* Demo remote + audio showpiece — always available (drag / minimize),
+          but hidden on the onboarding page so the setup flow stays clean. */}
+      <ControlChrome />
       <Routes>
         <Route path="/" element={<Onboarding />} />
         <Route path="/dashboard" element={<Dashboard />} />
@@ -57,5 +46,21 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+  );
+}
+
+/**
+ * The always-mounted demo chrome. Kept mounted across routes so the audio graph
+ * survives navigation, but hidden on the onboarding page (`/`) so the setup
+ * wizard stays uncluttered.
+ */
+function ControlChrome() {
+  const { pathname } = useLocation();
+  const hidden = pathname === '/';
+  return (
+    <>
+      <Audio hidden={hidden} />
+      <ScenarioPanel hidden={hidden} />
+    </>
   );
 }

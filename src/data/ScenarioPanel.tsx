@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '@/store';
+import { DraggablePanel } from '@/components/DraggablePanel';
 import {
   FPS,
   SCENARIOS,
@@ -25,7 +26,7 @@ import {
  * 10 fps so the remote feels alive today. Once team 02's engine consumes the
  * same frames, it becomes the single clock — the readout here still mirrors it.
  */
-export default function ScenarioPanel() {
+export default function ScenarioPanel({ hidden }: { hidden?: boolean }) {
   const scenario = useStore((s) => s.activeScenario);
   const setScenario = useStore((s) => s.setScenario);
 
@@ -50,18 +51,7 @@ export default function ScenarioPanel() {
   const progress = frames.length > 1 ? frame / (frames.length - 1) : 0;
 
   return (
-    <aside
-      className="fixed bottom-4 left-4 z-50 w-[300px] rounded-card border border-hairline bg-surface p-4 shadow-glass backdrop-blur-glass"
-      aria-label="Attune demo control panel"
-    >
-      {/* Header */}
-      <div className="mb-3 flex items-baseline justify-between">
-        <span className="font-sans text-[11px] font-semibold uppercase tracking-labelWide text-champagne">
-          Demo Remote
-        </span>
-        <span className="font-mono text-[10px] uppercase text-textMute">?control</span>
-      </div>
-
+    <DraggablePanel storageKey="attune-demo-remote" title="Demo Remote" width={300} defaultCorner="bottom-left" hidden={hidden}>
       {/* Scenario buttons (2×2) */}
       <div className="grid grid-cols-2 gap-2">
         {SCENARIOS.map((id) => {
@@ -138,7 +128,7 @@ export default function ScenarioPanel() {
           </span>
         )}
       </div>
-    </aside>
+    </DraggablePanel>
   );
 }
 

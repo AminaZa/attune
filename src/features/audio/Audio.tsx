@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, getStore } from '@/store';
+import { DraggablePanel } from '@/components/DraggablePanel';
 import type { NotificationEvent } from '@/types';
 import { CabinAudioEngine, type AudioStatus } from './engine';
 
@@ -15,15 +16,11 @@ import { CabinAudioEngine, type AudioStatus } from './engine';
  *     oscillating peak in 600–1500 Hz), not a hardcoded badge.
  *
  * Controls (an explicit user-gesture "enable audio" for autoplay policy, a master
- * mute, and a RAW↔PROCESSED A/B toggle to demo the difference live) live behind
- * `?control` so they sit on the laptop and never on the projector — and audio
- * only ever starts on the tab where someone presses enable, so it never doubles.
+ * mute, and a RAW↔PROCESSED A/B toggle to demo the difference live) live in a
+ * draggable/minimizable panel. Audio only ever starts on the tab where someone
+ * presses enable, so it never doubles across the dashboard/cabin tabs.
  */
-const SHOW_CONTROL =
-  typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).has('control');
-
-export default function Audio() {
+export default function Audio({ hidden }: { hidden?: boolean }) {
   const engineRef = useRef<CabinAudioEngine | null>(null);
   const sirenOnRef = useRef(false);
   // Rising-edge trackers so each spoken cue fires once per episode, never per frame.
@@ -151,25 +148,19 @@ export default function Audio() {
     }
   }
 
-  // Audio runs only on the control tab; the projector stays silent + uncluttered.
-  if (!SHOW_CONTROL) return null;
-
   return (
-    <aside
-      className="fixed bottom-4 right-4 z-50 w-[260px] rounded-card border border-hairline bg-surface p-4 shadow-glass backdrop-blur-glass"
-      aria-label="Attune audio showpiece"
-    >
-      <div className="mb-3 flex items-baseline justify-between">
-        <span className="font-sans text-[11px] font-semibold uppercase tracking-labelWide text-champagne">
-          Audio
+    <DraggablePanel
+      storageKey="attune-audio"
+      title="Audio"
+      width={260}
+      defaultCorner="bottom-right"
+      hidden={hidden}
+      headerRight={enabled ? (
+        <span className="font-mono text-[10px] uppercase text-textMute">
+          {mode === 'raw' ? 'raw' : 'processed'}
         </span>
-        {enabled && (
-          <span className="font-mono text-[10px] uppercase text-textMute">
-            {mode === 'raw' ? 'raw' : 'processed'}
-          </span>
-        )}
-      </div>
-
+      ) : undefined}
+    >
       {!enabled ? (
         <>
           <button
@@ -241,7 +232,7 @@ export default function Audio() {
           )}
         </>
       )}
-    </aside>
+    </DraggablePanel>
   );
 }
 

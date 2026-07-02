@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { motion, useSpring, useTransform, useMotionValueEvent } from 'framer-motion';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GaugeRing — Phase 2 animated ring gauge
+// GaugeRing — instrument-grade ring gauge (pixel-matched to
+// attune-mock-dashboard-v2-cyan.png / mockups-v2/dashboard-a.html §gauges).
 //
-// SVG stroke-dasharray arc + Framer Motion spring (stiffness 60, damping 20).
-// Color blends across three stops driven by the spring value:
-//   ramp="rising"    → calm (#2FE0A0) → warm (#FFB454) → alert (#FF5765)   [stress, overload]
-//   ramp="attention" → alert (#FF5765) → warm (#FFB454) → calm (#2FE0A0)   [attention: high = good]
-// At idle, a 3 s breathing opacity cycle makes the screen feel alive.
+// 212×212 ring (r86, sw12), gradient stroke blended from the value, a value-
+// coloured outer glow + arc drop-shadow, and a faint conic TICK RING. Big
+// tabular value centred with the metric name beneath it (in-ring), then the
+// label + live trend caret below. Spring { stiffness: 60, damping: 20 } (§4).
+//   ramp="rising"    → calm → warm → alert   [stress, overload: high = bad]
+//   ramp="attention" → alert → warm → calm   [attention: high = good]
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CALM  = '#2FE0A0';
@@ -20,16 +22,12 @@ const RAMPS = {
   attention: [ALERT, WARM, CALM],
 } as const;
 
-// SVG geometry — fixed viewBox so the ring is crisp at any rendered size.
-const SIZE   = 200;          // viewBox width & height
-const CX     = SIZE / 2;     // 100
-const CY     = SIZE / 2;     // 100
-const R      = 74;           // arc radius
-const SW     = 13;           // stroke width
-const CIRC   = 2 * Math.PI * R; // ≈ 464.9
-
-// Tick angles (every 25% of the arc = every 90°), rotated to match the -90° SVG transform.
-const TICK_POSITIONS = [0, 0.25, 0.5, 0.75, 1];
+const SIZE = 212;
+const CX   = SIZE / 2;
+const CY   = SIZE / 2;
+const R    = 86;
+const SW   = 12;
+const CIRC = 2 * Math.PI * R;
 
 interface GaugeRingProps {
   value: number;              // 0..1, live from store
@@ -37,107 +35,111 @@ interface GaugeRingProps {
   ramp: keyof typeof RAMPS;
 }
 
-export function GaugeRing({ value, label, ramp }: GaugeRingProps) {
-  // Spring-animated value — slow & viscous per design system §4.
-  const spring = useSpring(value, { stiffness: 60, damping: 20 });
+function trendFor(ramp: keyof typeof RAMPS, value: number, dir: -1 | 0 | 1) {
+  if (ramp === 'attention') {
+    if (value >= 0.8) return { glyph: '●', text: 'focused' };
+    if (dir > 0)      return { glyph: '▲', text: 'recovering' };
+    if (dir < 0)      return { glyph: '▼', text: 'dropping' };
+    return { glyph: '●', text: 'stable' };
+  }
+  if (value >= 0.8) return { glyph: '▲', text: 'peak' };
+  if (dir > 0)      return { glyph: '▲', text: 'rising' };
+  if (dir < 0)      return { glyph: '▼', text: 'easing' };
+  return { glyph: '●', text: 'stable' };
+}
 
-  // Keep the spring chasing the incoming prop value.
+export function GaugeRing({ value, label, ramp }: GaugeRingProps) {
+  const gid = useId().replace(/:/g, ''); // safe SVG id
+
+  const spring = useSpring(value, { stiffness: 60, damping: 20 });
   useEffect(() => { spring.set(value); }, [spring, value]);
 
-  // Derived MotionValues — no re-renders, all on the animation thread.
   const dashOffset = useTransform(spring, (v) => CIRC * (1 - Math.max(0, Math.min(1, v))));
-  const color      = useTransform(spring, [0, 0.5, 1], RAMPS[ramp]);
-  const glowOp     = useTransform(spring, [0, 1], [0.04, 0.14]); // glow fades in with value
+  const color      = useTransform(spring, [0, 0.5, 1], [...RAMPS[ramp]]);
+  const glowOp     = useTransform(spring, [0, 1], [0.06, 0.22]);
 
-  // Displayed percentage — follows the spring so the number animates too.
   const [pct, setPct] = useState(Math.round(value * 100));
-  useMotionValueEvent(spring, 'change', (v) => setPct(Math.round(Math.max(0, Math.min(1, v)) * 100)));
+  useMotionValueEvent(spring, 'change', (v) =>
+    setPct(Math.round(Math.max(0, Math.min(1, v)) * 100)),
+  );
+
+  // Live trend — sample direction on a slow cadence so it reads steadily.
+  const prev = useRef(value);
+  const [trend, setTrend] = useState(() => trendFor(ramp, value, 0));
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = value - prev.current;
+      const dir: -1 | 0 | 1 = d > 0.015 ? 1 : d < -0.015 ? -1 : 0;
+      setTrend(trendFor(ramp, value, dir));
+      prev.current = value;
+    }, 900);
+    return () => clearInterval(id);
+  }, [ramp, value]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3">
-
-      {/* Breathing wrapper — barely-visible 3 s opacity cycle at idle */}
+    <div className="flex flex-col items-center">
       <motion.div
-        animate={{ opacity: [0.82, 1, 0.82] }}
+        animate={{ opacity: [0.9, 1, 0.9] }}
         transition={{ duration: 3, ease: 'easeInOut', repeat: Infinity }}
-        className="relative flex items-center justify-center"
-        style={{ width: SIZE, height: SIZE }}
+        className="relative"
+        style={{ width: SIZE, height: SIZE, ['--gc' as never]: color as never }}
       >
-        {/* Value-colored outer glow — intensifies as value rises */}
+        {/* value-coloured outer glow */}
         <motion.div
           className="pointer-events-none absolute rounded-full"
+          style={{ inset: 10, background: color, opacity: glowOp, filter: 'blur(28px)' }}
+        />
+
+        {/* faint conic tick ring */}
+        <div
+          className="pointer-events-none absolute rounded-full"
           style={{
-            inset: -8,
-            background: color,
-            opacity: glowOp,
-            filter: 'blur(28px)',
+            inset: 9, opacity: 0.5,
+            background: 'repeating-conic-gradient(from 0deg, rgba(255,255,255,0.16) 0 0.7deg, transparent 0.7deg 6deg)',
+            WebkitMaskImage: 'radial-gradient(transparent 92px, #000 92px)',
+            maskImage: 'radial-gradient(transparent 92px, #000 92px)',
           }}
         />
 
-        {/* Ring SVG */}
-        <svg
-          width={SIZE}
-          height={SIZE}
-          viewBox={`0 0 ${SIZE} ${SIZE}`}
-          style={{ display: 'block', transform: 'rotate(-90deg)' }}  // arc starts at 12 o'clock
-        >
-          {/* Track — full circle in hairline */}
-          <circle
-            cx={CX} cy={CY} r={R}
-            fill="none"
-            stroke="rgba(255,255,255,0.07)"
-            strokeWidth={SW}
-            strokeLinecap="round"
-          />
+        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}
+             style={{ display: 'block', transform: 'rotate(-90deg)' }}>
+          <defs>
+            <linearGradient id={`grad-${gid}`} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%"   stopColor="var(--gc)" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="var(--gc)" stopOpacity="1" />
+            </linearGradient>
+          </defs>
 
-          {/* Faint tick marks at 0 / 25 / 50 / 75 / 100 % */}
-          {TICK_POSITIONS.map((t) => {
-            const a   = t * 2 * Math.PI;
-            const cos = Math.cos(a);
-            const sin = Math.sin(a);
-            const inner = R - SW / 2 - 1;
-            const outer = R + SW / 2 + 1;
-            return (
-              <line
-                key={t}
-                x1={CX + inner * cos} y1={CY + inner * sin}
-                x2={CX + outer * cos} y2={CY + outer * sin}
-                stroke="rgba(216,198,166,0.18)"  // champagne ticks
-                strokeWidth={1.5}
-              />
-            );
-          })}
+          {/* track */}
+          <circle cx={CX} cy={CY} r={R} fill="none"
+                  stroke="rgba(255,255,255,0.07)" strokeWidth={SW} />
 
-          {/* Animated fill arc */}
-          <motion.circle
-            cx={CX} cy={CY} r={R}
-            fill="none"
-            strokeWidth={SW}
-            strokeLinecap="round"
-            strokeDasharray={CIRC}
-            style={{ stroke: color, strokeDashoffset: dashOffset }}
-          />
+          {/* animated gradient fill arc */}
+          <motion.circle cx={CX} cy={CY} r={R} fill="none"
+            strokeWidth={SW} strokeLinecap="round" strokeDasharray={CIRC}
+            stroke={`url(#grad-${gid})`}
+            style={{ strokeDashoffset: dashOffset, filter: 'drop-shadow(0 0 8px var(--gc))' }} />
         </svg>
 
-        {/* Centered value overlay */}
+        {/* centred value + in-ring metric name */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <motion.span
-            className="font-mono font-semibold tabular-nums leading-none"
-            style={{ fontSize: 56, color }}
-          >
+          <motion.span className="font-mono text-[62px] font-semibold leading-none tabular-nums"
+                       style={{ color, letterSpacing: '-0.02em' }}>
             {pct}
           </motion.span>
-          <motion.span
-            className="font-mono font-normal tabular-nums"
-            style={{ fontSize: 17, color, opacity: 0.55 }}
-          >
-            %
-          </motion.span>
+          <span className="mt-[7px] font-mono text-[15px] uppercase tracking-[0.05em] text-textMute">
+            {label}
+          </span>
         </div>
       </motion.div>
 
-      {/* Label — below the ring */}
-      <span className="label-attune">{label}</span>
+      {/* label + live trend caret below the ring */}
+      <span className="mt-4 font-sans text-[13px] uppercase tracking-[0.26em] text-textDim">
+        {label}
+      </span>
+      <motion.span className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.16em] tabular-nums" style={{ color }}>
+        {trend.glyph} {trend.text}
+      </motion.span>
     </div>
   );
 }
