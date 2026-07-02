@@ -4,6 +4,11 @@ dist-ssr
 *.local
 .vite
 
+# Local screenshots / dev captures — never commit
+cabin-screenshots/
+screenshots/
+*-screenshots/
+
 # Editor / OS
 .DS_Store
 .vscode/*
