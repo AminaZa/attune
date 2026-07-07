@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/store';
 import type { SupportProfile } from '@/types';
@@ -21,6 +22,7 @@ type DraftProfile = {
   intervention?: Partial<SupportProfile['intervention']>;
 };
 type StarterKey = 'autism' | 'adhd' | 'audhd';
+type StepDirection = -1 | 1;
 type HapticTolerance = SupportProfile['sensory']['hapticTolerance'];
 type ZoneOutRisk = SupportProfile['attention']['zoneOutRisk'];
 type PreferredAlertChannel = SupportProfile['intervention']['preferredAlertChannel'];
@@ -140,9 +142,30 @@ const formatLevel = (value: number) => value.toFixed(2);
 const formatTemperature = (value: number) => `${value}°C`;
 const formatToggle = (value: boolean) => (value ? 'On' : 'Off');
 
+const stepTransition = { duration: 0.65, ease: [0.22, 1, 0.36, 1] } as const;
+
+const stepVariants = {
+  enter: (direction: StepDirection) => ({
+    opacity: 0,
+    x: direction > 0 ? 36 : -36,
+    filter: 'blur(8px)',
+  }),
+  center: {
+    opacity: 1,
+    x: 0,
+    filter: 'blur(0px)',
+  },
+  exit: (direction: StepDirection) => ({
+    opacity: 0,
+    x: direction > 0 ? -36 : 36,
+    filter: 'blur(8px)',
+  }),
+};
+
 export function OnboardingWizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const [stepDirection, setStepDirection] = useState<StepDirection>(1);
   const [draft, setDraft] = useState<DraftProfile>({});
   const [selectedStarter, setSelectedStarter] = useState<StarterKey | null>(null);
 
@@ -221,8 +244,20 @@ export function OnboardingWizard() {
     }));
   };
 
+  const moveToStep = (nextStep: number) => {
+    setStep((currentStep) => {
+      const clampedStep = Math.min(TOTAL_STEPS, Math.max(1, nextStep));
+
+      if (clampedStep !== currentStep) {
+        setStepDirection(clampedStep > currentStep ? 1 : -1);
+      }
+
+      return clampedStep;
+    });
+  };
+
   const continueFromStarter = () => {
-    if (selectedStarter) setStep(2);
+    if (selectedStarter) moveToStep(2);
   };
 
   const finishOnboarding = () => {
@@ -242,52 +277,72 @@ export function OnboardingWizard() {
   };
 
   const goToNextStep = () => {
-    setStep((currentStep) => Math.min(TOTAL_STEPS, currentStep + 1));
+    moveToStep(step + 1);
   };
 
   return (
-    <main className="bg-attune flex min-h-screen justify-center px-5 py-10 text-text sm:px-8">
-      <section className="flex min-h-[calc(100vh-5rem)] w-full max-w-3xl flex-col">
-        <p className="mb-12 font-sans text-2xl font-semibold tracking-labelWide text-text">
+    <main className="bg-attune flex min-h-screen justify-center px-4 py-6 text-text sm:px-8 sm:py-10">
+      <section className="flex min-h-[calc(100vh-3rem)] w-full max-w-3xl flex-col sm:min-h-[calc(100vh-5rem)]">
+        <p className="mb-8 font-sans text-xl font-semibold tracking-labelWide text-champagne sm:mb-12 sm:text-2xl">
           ATTUNE
         </p>
 
-        <div className="mb-10">
-          <h1 className="max-w-xl font-sans text-5xl font-semibold leading-[1.08] text-text sm:text-6xl">
+        <div className="mb-8 sm:mb-10">
+          <h1 className="max-w-xl font-sans text-4xl font-semibold leading-[1.08] text-text sm:text-6xl">
             Set up your Support Profile
           </h1>
         </div>
 
-        <div className="mb-14 flex items-center gap-4">
-          <p className="shrink-0 font-mono text-lg uppercase tracking-labelWide text-textDim">
+        <div className="mb-10 flex flex-col gap-4 sm:mb-14 sm:flex-row sm:items-center">
+          <motion.p
+            key={step}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="shrink-0 font-mono text-sm uppercase tracking-labelWide text-textDim sm:text-lg"
+          >
             Step {step} / {TOTAL_STEPS}
-          </p>
-          <div className="grid w-full max-w-md grid-cols-5 gap-3">
+          </motion.p>
+          <div className="grid w-full max-w-md grid-cols-5 gap-2 sm:gap-3">
             {Array.from({ length: TOTAL_STEPS }, (_, index) => {
               const isActive = index + 1 <= step;
 
               return (
                 <span
                   key={index}
-                  className={`h-2 rounded-full transition ${
-                    isActive
-                      ? 'bg-accent shadow-[0_0_22px_rgba(52,222,242,0.65)]'
-                      : 'bg-white/10'
-                  }`}
-                />
+                  className="relative h-2 overflow-hidden rounded-full border border-hairline bg-raised/60"
+                >
+                  <motion.span
+                    className="absolute inset-0 rounded-full bg-accent shadow-glass"
+                    initial={false}
+                    animate={{ scaleX: isActive ? 1 : 0, opacity: isActive ? 1 : 0 }}
+                    transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ originX: 0 }}
+                  />
+                </span>
               );
             })}
           </div>
         </div>
 
-        <div className="flex-1">
-          {isFirstStep ? (
+        <div className="min-h-0 flex-1 overflow-x-hidden">
+          <AnimatePresence mode="wait" custom={stepDirection} initial={false}>
+            <motion.div
+              key={step}
+              custom={stepDirection}
+              variants={stepVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={stepTransition}
+            >
+              {isFirstStep ? (
             <div>
               <div className="mb-8">
-                <h2 className="mb-4 font-sans text-3xl font-semibold leading-tight text-text sm:text-4xl">
+                <h2 className="mb-4 font-sans text-2xl font-semibold leading-tight text-text sm:text-4xl">
                   What did your specialist diagnose?
                 </h2>
-                <p className="max-w-2xl text-xl leading-8 text-textDim">
+                <p className="max-w-2xl text-lg leading-8 text-textDim sm:text-xl">
                   This seeds your starting settings — you tune everything next.
                 </p>
               </div>
@@ -302,14 +357,14 @@ export function OnboardingWizard() {
                       key={starter}
                       type="button"
                       onClick={() => applyStarter(starter)}
-                      className={`flex min-h-36 w-full items-center gap-6 rounded-card border p-7 text-left transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                      className={`flex min-h-32 w-full items-center gap-4 rounded-card border p-5 text-left transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:min-h-36 sm:gap-6 sm:p-7 ${
                         isSelected
                           ? 'border-accent bg-surface shadow-[0_0_34px_rgba(52,222,242,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]'
                           : 'border-hairline bg-raised/30 hover:border-accent/70 hover:bg-raised/50'
                       }`}
                     >
                       <span
-                        className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-inner border font-mono text-3xl ${
+                        className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-inner border font-mono text-2xl sm:h-20 sm:w-20 sm:text-3xl ${
                           isSelected
                             ? 'border-accent text-accent shadow-[0_0_24px_rgba(52,222,242,0.24)]'
                             : 'border-hairline2 text-textDim'
@@ -320,16 +375,16 @@ export function OnboardingWizard() {
                       </span>
 
                       <span className="min-w-0 flex-1">
-                        <span className="block font-sans text-3xl font-semibold leading-tight text-text">
+                        <span className="block font-sans text-2xl font-semibold leading-tight text-text sm:text-3xl">
                           {option.label}
                         </span>
-                        <span className="mt-2 block max-w-md text-xl leading-7 text-textDim">
+                        <span className="mt-2 block max-w-md text-base leading-7 text-textDim sm:text-xl">
                           {option.shortLabel}
                         </span>
                       </span>
 
                       <span
-                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border text-2xl font-bold transition ${
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xl font-bold transition sm:h-12 sm:w-12 sm:text-2xl ${
                           isSelected
                             ? 'border-accent bg-accent text-onAccent shadow-[0_0_28px_rgba(52,222,242,0.75)]'
                             : 'border-hairline2 text-transparent'
@@ -343,7 +398,7 @@ export function OnboardingWizard() {
                 })}
               </div>
 
-              <div className="mx-auto mt-16 max-w-lg text-center text-xl leading-8 text-textDim">
+              <div className="mx-auto mt-10 max-w-lg text-center text-lg leading-8 text-textDim sm:mt-16 sm:text-xl">
                 <p>Your diagnosis only pre-fills settings.</p>
                 <p className="font-semibold text-text">It is never stored.</p>
               </div>
@@ -351,21 +406,21 @@ export function OnboardingWizard() {
           ) : step === 2 ? (
             <div>
               <div className="mb-8">
-                <h2 className="mb-4 font-sans text-3xl font-semibold leading-tight text-text sm:text-4xl">
+                <h2 className="mb-4 font-sans text-2xl font-semibold leading-tight text-text sm:text-4xl">
                   Tune sensory comfort
                 </h2>
-                <p className="max-w-2xl text-xl leading-8 text-textDim">
+                <p className="max-w-2xl text-lg leading-8 text-textDim sm:text-xl">
                   Set the cabin baseline for noise, light, temperature, and touch feedback.
                 </p>
               </div>
 
               <div className="space-y-5">
-                <label className="block rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <span className="flex items-start justify-between gap-6">
-                    <span className="text-xl font-semibold leading-7 text-text">
+                <label className="block rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <span className="flex items-start justify-between gap-4 sm:gap-6">
+                    <span className="text-lg font-semibold leading-7 text-text sm:text-xl">
                       How much should the cabin quiet background noise?
                     </span>
-                    <span className="shrink-0 font-mono text-2xl text-accent">
+                    <span className="shrink-0 font-mono text-xl text-accent sm:text-2xl">
                       {sensoryDraft.noiseCancelStrength.toFixed(2)}
                     </span>
                   </span>
@@ -382,12 +437,12 @@ export function OnboardingWizard() {
                   />
                 </label>
 
-                <label className="block rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <span className="flex items-start justify-between gap-6">
-                    <span className="text-xl font-semibold leading-7 text-text">
+                <label className="block rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <span className="flex items-start justify-between gap-4 sm:gap-6">
+                    <span className="text-lg font-semibold leading-7 text-text sm:text-xl">
                       Light dimming level
                     </span>
-                    <span className="shrink-0 font-mono text-2xl text-accent">
+                    <span className="shrink-0 font-mono text-xl text-accent sm:text-2xl">
                       {sensoryDraft.lightDimmingLevel.toFixed(2)}
                     </span>
                   </span>
@@ -404,12 +459,12 @@ export function OnboardingWizard() {
                   />
                 </label>
 
-                <label className="block rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <span className="flex items-start justify-between gap-6">
-                    <span className="text-xl font-semibold leading-7 text-text">
+                <label className="block rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <span className="flex items-start justify-between gap-4 sm:gap-6">
+                    <span className="text-lg font-semibold leading-7 text-text sm:text-xl">
                       Preferred cabin temperature
                     </span>
-                    <span className="shrink-0 font-mono text-2xl text-accent">
+                    <span className="shrink-0 font-mono text-xl text-accent sm:text-2xl">
                       {sensoryDraft.temperaturePreferenceC}°C
                     </span>
                   </span>
@@ -426,12 +481,12 @@ export function OnboardingWizard() {
                   />
                 </label>
 
-                <div className="rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <div className="mb-5 flex items-start justify-between gap-6">
-                    <p className="text-xl font-semibold leading-7 text-text">
+                <div className="rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <div className="mb-5 flex items-start justify-between gap-4 sm:gap-6">
+                    <p className="text-lg font-semibold leading-7 text-text sm:text-xl">
                       Haptic feedback tolerance
                     </p>
-                    <p className="shrink-0 font-mono text-2xl capitalize text-accent">
+                    <p className="shrink-0 font-mono text-xl capitalize text-accent sm:text-2xl">
                       {sensoryDraft.hapticTolerance}
                     </p>
                   </div>
@@ -445,7 +500,7 @@ export function OnboardingWizard() {
                           key={option}
                           type="button"
                           onClick={() => updateSensory('hapticTolerance', option)}
-                          className={`min-h-20 rounded-inner border px-5 text-xl font-semibold capitalize transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                          className={`min-h-16 rounded-inner border px-5 text-lg font-semibold capitalize transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:min-h-20 sm:text-xl ${
                             isSelected
                               ? 'border-accent bg-accent text-onAccent shadow-[0_0_28px_rgba(52,222,242,0.32)]'
                               : 'border-hairline2 bg-raised/30 text-textDim hover:border-accent/70 hover:text-text'
@@ -462,21 +517,21 @@ export function OnboardingWizard() {
           ) : step === 3 ? (
             <div>
               <div className="mb-8">
-                <h2 className="mb-4 font-sans text-3xl font-semibold leading-tight text-text sm:text-4xl">
+                <h2 className="mb-4 font-sans text-2xl font-semibold leading-tight text-text sm:text-4xl">
                   Tune attention support
                 </h2>
-                <p className="max-w-2xl text-xl leading-8 text-textDim">
+                <p className="max-w-2xl text-lg leading-8 text-textDim sm:text-xl">
                   Choose how Attune keeps the drive quiet without letting focus drift.
                 </p>
               </div>
 
               <div className="space-y-5">
-                <div className="rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <div className="mb-5 flex items-start justify-between gap-6">
-                    <p className="text-xl font-semibold leading-7 text-text">
+                <div className="rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <div className="mb-5 flex items-start justify-between gap-4 sm:gap-6">
+                    <p className="text-lg font-semibold leading-7 text-text sm:text-xl">
                       Do quiet drives make you zone out?
                     </p>
-                    <p className="shrink-0 font-mono text-2xl capitalize text-accent">
+                    <p className="shrink-0 font-mono text-xl capitalize text-accent sm:text-2xl">
                       {attentionDraft.zoneOutRisk}
                     </p>
                   </div>
@@ -490,7 +545,7 @@ export function OnboardingWizard() {
                           key={option}
                           type="button"
                           onClick={() => updateAttention('zoneOutRisk', option)}
-                          className={`min-h-20 rounded-inner border px-5 text-xl font-semibold capitalize transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                          className={`min-h-16 rounded-inner border px-5 text-lg font-semibold capitalize transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:min-h-20 sm:text-xl ${
                             isSelected
                               ? 'border-accent bg-accent text-onAccent shadow-[0_0_28px_rgba(52,222,242,0.32)]'
                               : 'border-hairline2 bg-raised/30 text-textDim hover:border-accent/70 hover:text-text'
@@ -503,13 +558,13 @@ export function OnboardingWizard() {
                   </div>
                 </div>
 
-                <div className="rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
+                <div className="rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
                   <div className="flex items-center justify-between gap-6">
                     <div>
-                      <p className="text-xl font-semibold leading-7 text-text">
+                      <p className="text-lg font-semibold leading-7 text-text sm:text-xl">
                         Gentle cues to keep you engaged
                       </p>
-                      <p className="mt-2 font-mono text-lg uppercase tracking-labelWide text-textDim">
+                      <p className="mt-2 font-mono text-sm uppercase tracking-labelWide text-textDim sm:text-lg">
                         {attentionDraft.engagementCuesEnabled ? 'On' : 'Off'}
                       </p>
                     </div>
@@ -541,12 +596,12 @@ export function OnboardingWizard() {
                   </div>
                 </div>
 
-                <label className="block rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <span className="flex items-start justify-between gap-6">
-                    <span className="text-xl font-semibold leading-7 text-text">
+                <label className="block rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <span className="flex items-start justify-between gap-4 sm:gap-6">
+                    <span className="text-lg font-semibold leading-7 text-text sm:text-xl">
                       How aggressively should we mute non-essential notifications?
                     </span>
-                    <span className="shrink-0 font-mono text-2xl text-accent">
+                    <span className="shrink-0 font-mono text-xl text-accent sm:text-2xl">
                       {attentionDraft.distractionFilteringLevel.toFixed(2)}
                     </span>
                   </span>
@@ -567,10 +622,10 @@ export function OnboardingWizard() {
           ) : step === 4 ? (
             <div>
               <div className="mb-8">
-                <h2 className="mb-4 font-sans text-3xl font-semibold leading-tight text-text sm:text-4xl">
+                <h2 className="mb-4 font-sans text-2xl font-semibold leading-tight text-text sm:text-4xl">
                   Choose alert style
                 </h2>
-                <p className="max-w-2xl text-xl leading-8 text-textDim">
+                <p className="max-w-2xl text-lg leading-8 text-textDim sm:text-xl">
                   Pick the channel Attune should use first when it needs your attention.
                 </p>
               </div>
@@ -587,14 +642,14 @@ export function OnboardingWizard() {
                       onClick={() =>
                         updateIntervention('preferredAlertChannel', option.value)
                       }
-                      className={`flex min-h-32 w-full items-center gap-6 rounded-card border p-7 text-left transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                      className={`flex min-h-28 w-full items-center gap-4 rounded-card border p-5 text-left transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:min-h-32 sm:gap-6 sm:p-7 ${
                         isSelected
                           ? 'border-accent bg-surface shadow-[0_0_34px_rgba(52,222,242,0.28),inset_0_1px_0_rgba(255,255,255,0.08)]'
                           : 'border-hairline bg-raised/30 hover:border-accent/70 hover:bg-raised/50'
                       }`}
                     >
                       <span
-                        className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border font-mono text-2xl uppercase ${
+                        className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border font-mono text-xl uppercase sm:h-16 sm:w-16 sm:text-2xl ${
                           isSelected
                             ? 'border-accent bg-accent text-onAccent shadow-[0_0_24px_rgba(52,222,242,0.45)]'
                             : 'border-hairline2 text-textDim'
@@ -605,10 +660,10 @@ export function OnboardingWizard() {
                       </span>
 
                       <span className="min-w-0 flex-1">
-                        <span className="block font-sans text-2xl font-semibold leading-tight text-text">
+                        <span className="block font-sans text-xl font-semibold leading-tight text-text sm:text-2xl">
                           {option.label}
                         </span>
-                        <span className="mt-2 block text-lg leading-7 text-textDim">
+                        <span className="mt-2 block text-base leading-7 text-textDim sm:text-lg">
                           {option.description}
                         </span>
                       </span>
@@ -631,93 +686,93 @@ export function OnboardingWizard() {
           ) : step === 5 ? (
             <div>
               <div className="mb-8">
-                <h2 className="mb-4 font-sans text-3xl font-semibold leading-tight text-text sm:text-4xl">
+                <h2 className="mb-4 font-sans text-2xl font-semibold leading-tight text-text sm:text-4xl">
                   Review your Support Profile
                 </h2>
-                <p className="max-w-2xl text-xl leading-8 text-textDim">
+                <p className="max-w-2xl text-lg leading-8 text-textDim sm:text-xl">
                   These settings are saved as preferences, not medical records.
                 </p>
               </div>
 
               <div className="space-y-5">
-                <section className="rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <h3 className="mb-5 font-sans text-2xl font-semibold text-text">
+                <section className="rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <h3 className="mb-5 font-sans text-xl font-semibold text-text sm:text-2xl">
                     Sensory
                   </h3>
                   <dl className="space-y-4">
                     <div className="flex items-center justify-between gap-6 border-b border-hairline pb-4">
-                      <dt className="text-lg text-textDim">Noise quieting</dt>
-                      <dd className="font-mono text-xl text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Noise quieting</dt>
+                      <dd className="font-mono text-lg text-accent sm:text-xl">
                         {formatLevel(sensoryDraft.noiseCancelStrength)}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-6 border-b border-hairline pb-4">
-                      <dt className="text-lg text-textDim">Light dimming</dt>
-                      <dd className="font-mono text-xl text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Light dimming</dt>
+                      <dd className="font-mono text-lg text-accent sm:text-xl">
                         {formatLevel(sensoryDraft.lightDimmingLevel)}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-6 border-b border-hairline pb-4">
-                      <dt className="text-lg text-textDim">Temperature</dt>
-                      <dd className="font-mono text-xl text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Temperature</dt>
+                      <dd className="font-mono text-lg text-accent sm:text-xl">
                         {formatTemperature(sensoryDraft.temperaturePreferenceC)}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-6">
-                      <dt className="text-lg text-textDim">Haptic tolerance</dt>
-                      <dd className="font-mono text-xl capitalize text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Haptic tolerance</dt>
+                      <dd className="font-mono text-lg capitalize text-accent sm:text-xl">
                         {sensoryDraft.hapticTolerance}
                       </dd>
                     </div>
                   </dl>
                 </section>
 
-                <section className="rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <h3 className="mb-5 font-sans text-2xl font-semibold text-text">
+                <section className="rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <h3 className="mb-5 font-sans text-xl font-semibold text-text sm:text-2xl">
                     Attention
                   </h3>
                   <dl className="space-y-4">
                     <div className="flex items-center justify-between gap-6 border-b border-hairline pb-4">
-                      <dt className="text-lg text-textDim">Zone-out risk</dt>
-                      <dd className="font-mono text-xl capitalize text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Zone-out risk</dt>
+                      <dd className="font-mono text-lg capitalize text-accent sm:text-xl">
                         {attentionDraft.zoneOutRisk}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-6 border-b border-hairline pb-4">
-                      <dt className="text-lg text-textDim">Engagement cues</dt>
-                      <dd className="font-mono text-xl text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Engagement cues</dt>
+                      <dd className="font-mono text-lg text-accent sm:text-xl">
                         {formatToggle(attentionDraft.engagementCuesEnabled)}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-6">
-                      <dt className="text-lg text-textDim">Notification filtering</dt>
-                      <dd className="font-mono text-xl text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Notification filtering</dt>
+                      <dd className="font-mono text-lg text-accent sm:text-xl">
                         {formatLevel(attentionDraft.distractionFilteringLevel)}
                       </dd>
                     </div>
                   </dl>
                 </section>
 
-                <section className="rounded-card border border-hairline bg-surface p-6 shadow-glass backdrop-blur">
-                  <h3 className="mb-5 font-sans text-2xl font-semibold text-text">
+                <section className="rounded-card border border-hairline bg-surface p-5 shadow-glass backdrop-blur sm:p-6">
+                  <h3 className="mb-5 font-sans text-xl font-semibold text-text sm:text-2xl">
                     Alerts
                   </h3>
                   <dl className="space-y-4">
                     <div className="flex items-center justify-between gap-6 border-b border-hairline pb-4">
-                      <dt className="text-lg text-textDim">Preferred channel</dt>
-                      <dd className="font-mono text-xl capitalize text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Preferred channel</dt>
+                      <dd className="font-mono text-lg capitalize text-accent sm:text-xl">
                         {interventionDraft.preferredAlertChannel}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-6 border-b border-hairline pb-4">
-                      <dt className="text-lg text-textDim">Stress threshold</dt>
-                      <dd className="font-mono text-xl text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Stress threshold</dt>
+                      <dd className="font-mono text-lg text-accent sm:text-xl">
                         {formatLevel(interventionDraft.stressThreshold)}
                       </dd>
                     </div>
                     <div className="flex items-center justify-between gap-6">
-                      <dt className="text-lg text-textDim">Overload threshold</dt>
-                      <dd className="font-mono text-xl text-accent">
+                      <dt className="text-base text-textDim sm:text-lg">Overload threshold</dt>
+                      <dd className="font-mono text-lg text-accent sm:text-xl">
                         {formatLevel(interventionDraft.overloadThreshold)}
                       </dd>
                     </div>
@@ -731,14 +786,16 @@ export function OnboardingWizard() {
               <p className="text-textDim">This step is ready for the next build pass.</p>
             </div>
           )}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
-        <div className="mt-12 grid gap-4 sm:grid-cols-[220px_1fr]">
+        <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-[220px_1fr]">
           <button
             type="button"
             disabled={!canGoBack}
-            onClick={() => setStep((currentStep) => Math.max(1, currentStep - 1))}
-            className="min-h-20 rounded-full border border-hairline px-8 text-xl font-semibold text-textDim transition hover:border-accent hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => moveToStep(step - 1)}
+            className="min-h-16 rounded-full border border-hairline px-8 text-lg font-semibold text-textDim transition hover:border-accent hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-20 sm:text-xl"
           >
             Back
           </button>
@@ -753,7 +810,7 @@ export function OnboardingWizard() {
                   ? continueFromStarter
                   : goToNextStep
             }
-            className="min-h-20 rounded-full bg-accent px-8 text-xl font-semibold text-onAccent shadow-[0_0_34px_rgba(52,222,242,0.32)] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-16 rounded-full bg-accent px-8 text-lg font-semibold text-onAccent shadow-[0_0_34px_rgba(52,222,242,0.32)] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-20 sm:text-xl"
           >
             {isFinalStep ? 'Finish' : 'Continue →'}
           </button>
